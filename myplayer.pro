@@ -10,10 +10,12 @@ CONFIG += c++11
 
 SOURCES += \
     main.cpp \
+    packetqueue.cpp \
     playerdialog.cpp \
     videoplayer.cpp
 
 HEADERS += \
+    packetqueue.h \
     playerdialog.h \
     videoplayer.h
 

@@ -1,7 +1,9 @@
 #include "playerdialog.h"
 #include "ui_playerdialog.h"
 
-#define _DEF_FILE_PATH "A:/TyyVideo/mmexport1685425970543.mp4"
+//#define _DEF_FILE_PATH "A:/TyyVideo/mmexport1685425970543.mp4"
+//#define _DEF_FILE_PATH "http://vjs.zencdn.net/v/oceans.mp4"
+#define _DEF_FILE_PATH "http://devimages.apple.com/iphone/samples/bipbop/bipbopall.m3u8"
 
 PlayerDialog::PlayerDialog(QWidget *parent)
     : QDialog(parent)

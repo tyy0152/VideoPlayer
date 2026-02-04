@@ -23,7 +23,8 @@ FORMS += \
     playerdialog.ui
 
 //.h.lib文件
-INCLUDEPATH += $$PWD/ffmpeg-4.2.2/include
+INCLUDEPATH += $$PWD/ffmpeg-4.2.2/include \
+
 
 LIBS += $$PWD/ffmpeg-4.2.2/lib/avcodec.lib \
         $$PWD/ffmpeg-4.2.2/lib/avdevice.lib \
@@ -34,19 +35,14 @@ LIBS += $$PWD/ffmpeg-4.2.2/lib/avcodec.lib \
         $$PWD/ffmpeg-4.2.2/lib/swresample.lib \
         $$PWD/ffmpeg-4.2.2/lib/swscale.lib
 
+INCLUDEPATH += $$PWD/ffmpeg-4.2.2/include \
+               $$PWD/SDL2-2.0.10\include
 
-## 指定头文件路径
-#INCLUDEPATH += $$PWD/ffmpeg-4.2.2/include
 
-## 指定库文件路径 (注意每行后面的反斜杠 \ 是换行符，不要漏掉)
-#LIBS += $$PWD/ffmpeg-4.2.2/lib/avcodec.lib \
-#        $$PWD/ffmpeg-4.2.2/lib/avdevice.lib \
-#        $$PWD/ffmpeg-4.2.2/lib/avfilter.lib \
-#        $$PWD/ffmpeg-4.2.2/lib/avformat.lib \
-#        $$PWD/ffmpeg-4.2.2/lib/avutil.lib \
-#        $$PWD/ffmpeg-4.2.2/lib/postproc.lib \
-#        $$PWD/ffmpeg-4.2.2/lib/swresample.lib \
-#        $$PWD/ffmpeg-4.2.2/lib/swscale.lib
+LIBS += -L$$PWD/ffmpeg-4.2.2/lib -lavcodec -lavformat -lavutil -lswscale -lswresample -lavdevice -lavfilter \
+        -L$$PWD/SDL2-2.0.10/lib/x64 -lSDL2
+
+DEFINES += SDL_MAIN_HANDLED
 
 
 # Default rules for deployment.

@@ -1,18 +1,24 @@
 #ifndef VIDEOPLAYER_H
 #define VIDEOPLAYER_H
 
+
 #include <QThread>
 #include<QImage>
 #include<thread>
 #include "packetqueue.h"
 
 //使用c去读取头文件
+
 extern "C"{
+// ================== 视频功能 ==================
     #include "libavcodec/avcodec.h"
     #include "libavformat/avformat.h"
     #include "libswscale/swscale.h"
     #include "libavdevice/avdevice.h"
     #include "libavutil/time.h"
+// ================== 音频功能 ==================
+    #include "libswresample/swresample.h" // 重采样
+    #include "SDL.h"                      // SDL
 }
 
 class videoPlayer : public QThread
@@ -38,6 +44,14 @@ private:
     QString m_fileName;
 
     PacketQueue m_queue;
+    PacketQueue m_audioQueue;
+
+    //保存音频流索引
+    int m_audioStreamIndex = -1;
+
+    //声明静态的回调函数
+    static void audio_callback(void* userdata,uint8_t* stream,int len);
+
     std::thread* m_readThread;
     bool m_isStop;
 };

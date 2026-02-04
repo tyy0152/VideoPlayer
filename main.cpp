@@ -1,3 +1,5 @@
+#define SDL_MAIN_HANDLED // <--- 必须放在最第一行！
+
 #include "playerdialog.h"
 
 #include <QApplication>

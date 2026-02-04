@@ -332,46 +332,49 @@ void videoPlayer::run()
         return;
     }
 
-    // 找到视频流索引
+    // 找到视频流索引//查找音频索引
+    m_audioStreamIndex=-1;
     int videoStream = -1;
     for (int i = 0; i < pFormatCtx->nb_streams; i++) {
         if (pFormatCtx->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
             videoStream = i;
-            break;
+        }else if(pFormatCtx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO){
+            m_audioStreamIndex=i;
         }
     }
-    if (videoStream == -1) {
-        qDebug() << "no video stream.";
+
+    //既无音频也无视频
+    if (videoStream == -1&&m_audioStreamIndex==-1) {
+        qDebug() << "no video and audio stream.";
         return;
     }
 
-    // 打开解码器
-    AVCodecContext *pCodecCtx = pFormatCtx->streams[videoStream]->codec;
-    AVCodec *pCodec = avcodec_find_decoder(pCodecCtx->codec_id);
-    if (avcodec_open2(pCodecCtx, pCodec, NULL) < 0) {
-        qDebug() << "open codec failed.";
-        return;
-    }
+    AVCodecContext *pVideoCodecCtx = nullptr;
+    AVCodec *pVideoCodec = nullptr;
+    AVCodecContext *pAudioCodecCtx = nullptr;
+    AVCodec *pAudioCodec = nullptr;
 
-    //查找音频
-    m_audioStreamIndex=-1;
-    for(int i=1;i<pFormatCtx->nb_streams;i++){
-        if(pFormatCtx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO){
-            m_audioStreamIndex=i;
-            break;
+    //只有视频
+    if (videoStream != -1) {
+        // 打开解码器
+        pVideoCodecCtx = pFormatCtx->streams[videoStream]->codec;
+        pVideoCodec = avcodec_find_decoder(pVideoCodecCtx->codec_id);
+        if (avcodec_open2(pVideoCodecCtx, pVideoCodec, NULL) < 0) {
+            qDebug() << "open codec failed.";
+            return;
         }
     }
 
     //初始化音频解码器和SDL
     if(m_audioStreamIndex!=-1){
         //获得解码器上下文
-        AVCodecContext* aCodecCtx=pFormatCtx->streams[m_audioStreamIndex]->codec;
-        AVCodec* aCodec=avcodec_find_decoder(aCodecCtx->codec_id);
-        if(avcodec_open2(aCodecCtx,aCodec,NULL)<0){
+        pAudioCodecCtx=pFormatCtx->streams[m_audioStreamIndex]->codec;
+        pAudioCodec=avcodec_find_decoder(pAudioCodecCtx->codec_id);
+        if(avcodec_open2(pAudioCodecCtx,pAudioCodec,NULL)<0){
             qDebug()<<"无法打开音频解码器";
         }else{
             //初始化全局变量 (给回调函数用)
-            s_audioCodecCtx = aCodecCtx;//绑定解码器
+            s_audioCodecCtx = pAudioCodecCtx;//绑定解码器
             s_audioQueue= &m_audioQueue; // 指向类的成员变量
             s_audioFrame= av_frame_alloc();//申请帧内存
             //申请缓冲区内存 (乘以2是为了保险，防止重采样后数据变大溢出)
@@ -383,9 +386,9 @@ void videoPlayer::run()
                                av_get_default_channel_layout(2), // 输出通道布局
                                AV_SAMPLE_FMT_S16,                // 输出采样格式 (SDL支持这种)
                                44100,                            // 输出采样率
-                               av_get_default_channel_layout(aCodecCtx->channels), // 输入
-                               aCodecCtx->sample_fmt,
-                               aCodecCtx->sample_rate,
+                               av_get_default_channel_layout(pAudioCodecCtx->channels), // 输入
+                               pAudioCodecCtx->sample_fmt,
+                               pAudioCodecCtx->sample_rate,
                                0, NULL);
             //正式初始化Swr
             swr_init(s_audioSwrCtx);
@@ -430,11 +433,13 @@ void videoPlayer::run()
 
             // 读取一帧数据
             if(av_read_frame(pFormatCtx, packet) >= 0){
+                //因为存在有视频没音频和有音频没视频的情况
+                //所以必须加-1判断，要不然会数组越界
                 // 如果是视频流就入队
-                if(packet->stream_index == videoStream){
+                if((videoStream != -1) &&(packet->stream_index == videoStream)){
                     m_queue.push(packet);
                 } //如果是音频，塞进音频队
-                else if(packet->stream_index == m_audioStreamIndex) {
+                else if((m_audioStreamIndex != -1)&&(packet->stream_index == m_audioStreamIndex)) {
                     m_audioQueue.push(packet);
                 }
                 else {
@@ -456,74 +461,88 @@ void videoPlayer::run()
     AVFrame *pFrameYUV = av_frame_alloc();
     AVFrame *pFrameRGB = av_frame_alloc();
 
-    // 初始化格式转换器 (YUV -> RGB32)
-    struct SwsContext *img_convert_ctx = sws_getContext(
-        pCodecCtx->width, pCodecCtx->height, pCodecCtx->pix_fmt,
-        pCodecCtx->width, pCodecCtx->height, AV_PIX_FMT_RGB32,
-        SWS_BICUBIC, NULL, NULL, NULL);
+    struct SwsContext *img_convert_ctx=nullptr;
+    uint8_t *out_buffer=nullptr;
 
-    int numBytes = avpicture_get_size(AV_PIX_FMT_RGB32, pCodecCtx->width, pCodecCtx->height);
-    uint8_t *out_buffer = (uint8_t *)av_malloc(numBytes * sizeof(uint8_t));
-    avpicture_fill((AVPicture *)pFrameRGB, out_buffer, AV_PIX_FMT_RGB32, pCodecCtx->width, pCodecCtx->height);
-
+    AVRational timeBase;
     int ret, got_picture;
+    if(videoStream!=-1){
+        // 初始化格式转换器 (YUV -> RGB32)
+        img_convert_ctx = sws_getContext(
+                    pVideoCodecCtx->width, pVideoCodecCtx->height, pVideoCodecCtx->pix_fmt,
+                    pVideoCodecCtx->width, pVideoCodecCtx->height, AV_PIX_FMT_RGB32,
+                    SWS_BICUBIC, NULL, NULL, NULL);
 
-    //更新功能：视频播放速度控制/*音画同步*/
-    //逻辑：解码——获得当前帧时间——比对系统时间——等待——发送信号
-    // 获取时间基准 (用于把抽象的 pts 转成微秒)
-    AVRational timeBase = pFormatCtx->streams[videoStream]->time_base;
+        int numBytes = avpicture_get_size(AV_PIX_FMT_RGB32, pVideoCodecCtx->width, pVideoCodecCtx->height);
+        out_buffer = (uint8_t *)av_malloc(numBytes * sizeof(uint8_t));
+        avpicture_fill((AVPicture *)pFrameRGB, out_buffer, AV_PIX_FMT_RGB32, pVideoCodecCtx->width, pVideoCodecCtx->height);
+
+        //更新功能：视频播放速度控制/*音画同步*/
+        //逻辑：解码——获得当前帧时间——比对系统时间——等待——发送信号
+        // 获取时间基准 (用于把抽象的 pts 转成微秒)
+        timeBase = pFormatCtx->streams[videoStream]->time_base;
+    }
+
     //加入时间戳
     int64_t start_time=av_gettime();
     int64_t pts=0;//当前视频帧的pts
 
     // 开始循环，从队列中取数据
     while(!m_isStop){
-        AVPacket *packet = m_queue.pop(); // 阻塞等待
+        if(videoStream!=-1){
+            AVPacket *packet = m_queue.pop(); // 阻塞等待
 
-        if(!packet) continue;
+            if(!packet) continue;
 
-        ret = avcodec_decode_video2(pCodecCtx, pFrameYUV, &got_picture, packet);
+            ret = avcodec_decode_video2(pVideoCodecCtx, pFrameYUV, &got_picture, packet);
 
-        if(ret < 0){
-            qDebug() << "decode error";
-            av_free_packet(packet);
-            free(packet);
-            continue;
-        }
-
-        if(got_picture){
-            // 转码
-            sws_scale(img_convert_ctx, (const uint8_t* const*)pFrameYUV->data, pFrameYUV->linesize,
-                      0, pCodecCtx->height, pFrameRGB->data, pFrameRGB->linesize);
-
-
-            //获得当前帧时间
-            pts=pFrameYUV->pts=pFrameYUV->best_effort_timestamp;
-            if(pts!=AV_NOPTS_VALUE){
-                pts*=1000000*av_q2d(pFormatCtx->streams[videoStream]->time_base);
-            }
-            //计算开始播放时长
-            int64_t realtime=av_gettime()-start_time;
-            //如果要求播放时间>开始播放时间，就需要等待
-            while(pts>realtime&&!m_isStop){
-                msleep(5);
-                realtime=av_gettime()-start_time;
+            if(ret < 0){
+                qDebug() << "decode error";
+                av_free_packet(packet);
+                free(packet);
+                continue;
             }
 
-
-            // 发送给界面
-            QImage tmpImg((uchar *)out_buffer, pCodecCtx->width, pCodecCtx->height, QImage::Format_RGB32);
-            emit SIG_getoneImage(tmpImg.copy()); // 发送深拷贝的图片
-
-//            // 简单的延时,延迟播放速度
-//            QThread::msleep(40);
+            if(got_picture){
+                // 转码
+                sws_scale(img_convert_ctx, (const uint8_t* const*)pFrameYUV->data, pFrameYUV->linesize,
+                          0, pVideoCodecCtx->height, pFrameRGB->data, pFrameRGB->linesize);
 
 
+                //获得当前帧时间
+                pts=pFrameYUV->pts=pFrameYUV->best_effort_timestamp;
+                if(pts!=AV_NOPTS_VALUE){
+                    pts*=1000000*av_q2d(pFormatCtx->streams[videoStream]->time_base);
+                }
+                //计算开始播放时长
+                int64_t realtime=av_gettime()-start_time;
+                //如果要求播放时间>开始播放时间，就需要等待
+                while(pts>realtime&&!m_isStop){
+                    msleep(5);
+                    realtime=av_gettime()-start_time;
+                }
+
+
+                // 发送给界面
+                QImage tmpImg((uchar *)out_buffer, pVideoCodecCtx->width, pVideoCodecCtx->height, QImage::Format_RGB32);
+                //emit SIG_getoneImage(tmpImg.copy()); // 发送深拷贝的图片
+                if(!tmpImg.isNull()) {
+                    emit SIG_getoneImage(tmpImg.copy());
+                }
+
+                //            // 简单的延时,延迟播放速度
+                //            QThread::msleep(40);
+
+
+                //}
+
+                // 消费完必须释放
+                av_free_packet(packet);
+                free(packet);
+            }
+        }else{
+            msleep(40);
         }
-
-        // 消费完必须释放
-        av_free_packet(packet);
-        free(packet);
     }
 
     // 4. 清理工作
@@ -550,12 +569,13 @@ void videoPlayer::run()
         swr_free(&s_audioSwrCtx);
     }
     // 释放 FFmpeg 资源
-    av_free(out_buffer);
-    av_frame_free(&pFrameYUV);
-    av_frame_free(&pFrameRGB);
-    avcodec_close(pCodecCtx);
-    avformat_close_input(&pFormatCtx);
-
+    if (videoStream != -1 && pVideoCodecCtx) {
+        av_free(out_buffer);
+        av_frame_free(&pFrameYUV);
+        av_frame_free(&pFrameRGB);
+        avcodec_close(pVideoCodecCtx);
+        avformat_close_input(&pFormatCtx);
+    }
 }
 
 

@@ -2,8 +2,11 @@
 #include "ui_playerdialog.h"
 
 //#define _DEF_FILE_PATH "A:/TyyVideo/mmexport1685425970543.mp4"
-#define _DEF_FILE_PATH "http://vjs.zencdn.net/v/oceans.mp4"
+//#define _DEF_FILE_PATH "http://vjs.zencdn.net/v/oceans.mp4"
 //#define _DEF_FILE_PATH "http://devimages.apple.com/iphone/samples/bipbop/bipbopall.m3u8"
+//#define _DEF_FILE_PATH "https://www.w3school.com.cn/i/horse.mp3"//纯音频
+#define _DEF_FILE_PATH "http://live.xmcdn.com/live/1005/64.m3u8"//纯音频
+
 
 PlayerDialog::PlayerDialog(QWidget *parent)
     : QDialog(parent)
